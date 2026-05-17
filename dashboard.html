@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Discord Bot Manager</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background: #0f1115; color: #e6e6e6; }
+    .card { background: #1a1f29; padding: 16px; border-radius: 10px; margin-bottom: 16px; }
+    input, textarea, select, button { width: 100%; margin: 6px 0; padding: 8px; border-radius: 6px; border: 1px solid #333; background:#0d1219;color:#fff; }
+    button { cursor: pointer; background: #3d7eff; border: none; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    pre { white-space: pre-wrap; background:#10151d;padding:10px;border-radius:6px;max-height:220px;overflow:auto; }
+  </style>
+</head>
+<body>
+  <h1>Discord Bot Manager (5 bots)</h1>
+  <div id="bots"></div>
+
+<script>
+const API = `${window.location.origin}/api`;
+
+async function fetchBots() {
+  const res = await fetch(`${API}/bots`);
+  return await res.json();
+}
+
+async function saveBot(id, payload) {
+  await fetch(`${API}/bots/${id}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+}
+
+async function loadMessages(id, pre) {
+  const res = await fetch(`${API}/bots/${id}/messages?limit=50`);
+  const data = await res.json();
+  pre.textContent = data.map(m => `[${m.created_at}] (${m.role}) ${m.author}: ${m.content}${m.important ? ' [IMPORTANT]' : ''}`).join('\n');
+}
+
+async function sendAsBot(id, channelId, message) {
+  await fetch(`${API}/bots/${id}/send`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({channel_id: channelId, message})
+  });
+}
+
+function botCard(bot) {
+  const card = document.createElement('div');
+  card.className = 'card';
+
+  const channels = bot.channels || [];
+  const options = channels.map(c => `<option value="${c.channel_id}">${c.guild} / #${c.channel}</option>`).join('');
+
+  card.innerHTML = `
+    <h2>Bot ${bot.bot_id}: ${bot.name}</h2>
+    <label>Name</label><input class="name" value="${bot.name}">
+    <label>Token</label><input class="token" value="${bot.token}">
+    <label>Prompt</label><textarea class="prompt">${bot.prompt}</textarea>
+    <label><input type="checkbox" class="enabled" ${bot.enabled ? 'checked' : ''}> Enabled</label>
+    <button class="save">Save</button>
+
+    <div class="row">
+      <div>
+        <h3>Send message as bot</h3>
+        <select class="channel">${options}</select>
+        <textarea class="message" placeholder="Message"></textarea>
+        <button class="send">Send</button>
+      </div>
+      <div>
+        <h3>Past messages</h3>
+        <button class="refresh">Refresh</button>
+        <pre class="messages"></pre>
+      </div>
+    </div>
+  `;
+
+  const name = card.querySelector('.name');
+  const token = card.querySelector('.token');
+  const prompt = card.querySelector('.prompt');
+  const enabled = card.querySelector('.enabled');
+  const save = card.querySelector('.save');
+  const channel = card.querySelector('.channel');
+  const message = card.querySelector('.message');
+  const send = card.querySelector('.send');
+  const refresh = card.querySelector('.refresh');
+  const pre = card.querySelector('.messages');
+
+  save.onclick = async () => {
+    await saveBot(bot.bot_id, { name: name.value, token: token.value, prompt: prompt.value, enabled: enabled.checked });
+    alert('Saved. Restart backend to reconnect bots with new settings.');
+  };
+
+  send.onclick = async () => {
+    await sendAsBot(bot.bot_id, channel.value, message.value);
+    message.value = '';
+    await loadMessages(bot.bot_id, pre);
+  };
+
+  refresh.onclick = async () => loadMessages(bot.bot_id, pre);
+  loadMessages(bot.bot_id, pre);
+
+  return card;
+}
+
+(async () => {
+  const bots = await fetchBots();
+  const root = document.getElementById('bots');
+  root.innerHTML = '';
+  bots.forEach(b => root.appendChild(botCard(b)));
+})();
+</script>
+</body>
+</html>
